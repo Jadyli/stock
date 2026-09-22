@@ -1,0 +1,58 @@
+name: Publish stock research site
+
+on:
+  push:
+    branches: ["feature/1.0"]
+    paths:
+      - "盘前策略/**/*.md"
+      - "涨停分析/**/*.md"
+      - "site/**"
+      - ".github/workflows/stock-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stock-github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the report branch
+        uses: actions/checkout@v6
+        with:
+          ref: feature/1.0
+          persist-credentials: false
+      - name: Install pinned build dependencies
+        run: |
+          python3 -m venv .site-venv
+          .site-venv/bin/python -m pip install --disable-pip-version-check -r site/requirements.txt
+      - name: Run publication safety and rendering tests
+        run: .site-venv/bin/python -m unittest discover -s site -p 'test_*.py' -v
+      - name: Build all published Markdown reports
+        run: .site-venv/bin/python site/build.py --base /stock/ --output _site
+      - name: Upload the complete site
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Verify Pages configuration
+        uses: actions/configure-pages@v5
+      - name: Publish to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
